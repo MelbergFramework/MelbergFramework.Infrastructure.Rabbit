@@ -16,9 +16,16 @@ public static class DependencyModule
 
     {
         CoreComponentDependencyModule.PrepareApplication(services);
-        services.Configure<RabbitConfigurationOptions>( _ => 
+        services.Configure<RabbitConfigurationOptions>(_ =>
         {
-            _.ClientDeclarations = new() { };
+            _.ClientDeclarations = new()
+            {
+                Connections = new ()
+                {
+                    
+                }
+
+            };
             _.ServerDeclarations = new();
         });
 
@@ -32,7 +39,7 @@ public static class DependencyModule
     {
         return services
             .OverrideWithSingleton
-            <IStandardPublisher<TMessage>,MockPublisher<TMessage>>();
+            <IStandardPublisher<TMessage>, MockPublisher<TMessage>>();
     }
 
     public static IServiceCollection OverrideTranslator<TMessage>
@@ -41,6 +48,6 @@ public static class DependencyModule
     {
         return services
             .OverrideWithSingleton
-            <IJsonToObjectTranslator<TMessage>,MockTranslator<TMessage>>();
+            <IJsonToObjectTranslator<TMessage>, MockTranslator<TMessage>>();
     }
 }

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
 using MelbergFramework.Infrastructure.Rabbit.Common.Exceptions;
 using MelbergFramework.Infrastructure.Rabbit.Configuration;
 using Microsoft.Extensions.Options;
@@ -10,13 +9,13 @@ namespace MelbergFramework.Infrastructure.Rabbit.Factories;
 
 public interface IStandardConnectionFactory
 {
-    IModel GetConsumerModel(string name);
+    Task<IChannel> GetConsumerModel(string name);
     IConnection GetPublisherChannel(string name); 
 }
 
 public class StandardConnectionFactory : IStandardConnectionFactory
 {
-    private static IModel _consumerChannel;
+    private static IChannel _consumerChannel;
     private readonly RabbitConfigurationOptions _rabbitConfigurationOptions;
 
     private static ConcurrentDictionary<string,IConnection> _publisherConnections = new ConcurrentDictionary<string, IConnection>();
@@ -24,7 +23,7 @@ public class StandardConnectionFactory : IStandardConnectionFactory
     {
         _rabbitConfigurationOptions = options.Value;
     }
-    private IConnection GenerateConsumerConnection(string consumerName)
+    private Task<IConnection> GenerateConsumerConnection(string consumerName)
     {
         var receiverConfigs = _rabbitConfigurationOptions
                                 .ClientDeclarations
@@ -39,7 +38,7 @@ public class StandardConnectionFactory : IStandardConnectionFactory
         return MakeNewConnection(connectionName);
     }
 
-    private IConnection GeneratePublisherChannel(string name)
+    private Task<IConnection> GeneratePublisherChannel(string name)
     {
         
         var publisherOptions = _rabbitConfigurationOptions
@@ -55,7 +54,7 @@ public class StandardConnectionFactory : IStandardConnectionFactory
         return MakeNewConnection(publisherConnection);
     }
     
-    private IConnection MakeNewConnection(string connectionName)
+    private Task<IConnection> MakeNewConnection(string connectionName)
     {
         var connectionConfigs = _rabbitConfigurationOptions
                                 .ClientDeclarations
@@ -70,26 +69,29 @@ public class StandardConnectionFactory : IStandardConnectionFactory
         return MakeNewConnection(connectionConfig);
     }
 
-    public IModel GetConsumerModel(string name = "IncommingMessages")
+    public async Task<IChannel> GetConsumerModel(string name = "IncommingMessages")
     {
-        _consumerChannel??= GenerateConsumerConnection(name).CreateModel();
+        _consumerChannel??= await (await GenerateConsumerConnection(name)).CreateChannelAsync();
         
         return _consumerChannel;
     } 
-    private IConnection MakeNewConnection(ConnectionOptions connectionConfig)
+    private Task<IConnection> MakeNewConnection(ConnectionOptions connectionConfig)
     {
         var factory = new ConnectionFactory()
         {
             UserName = connectionConfig.UserName,
             Password = connectionConfig.Password,
             VirtualHost = "/",
-            DispatchConsumersAsync = true,
             HostName = connectionConfig.ServerName,
             ClientProvidedName = connectionConfig.ClientName,
         };
+        new ConnectionFactory()
+        {
+
+        };
         try
         {
-            return factory.CreateConnection();
+            return factory.CreateConnectionAsync();
         }
         catch (BrokerUnreachableException)
         {
@@ -99,6 +101,8 @@ public class StandardConnectionFactory : IStandardConnectionFactory
 
     public IConnection GetPublisherChannel(string name)
     {
-        return _publisherConnections.GetOrAdd(name, GeneratePublisherChannel(name));
+        var channelTask = GeneratePublisherChannel(name);
+        channelTask.Wait();
+        return _publisherConnections.GetOrAdd(name, channelTask.Result);
     }
 } 

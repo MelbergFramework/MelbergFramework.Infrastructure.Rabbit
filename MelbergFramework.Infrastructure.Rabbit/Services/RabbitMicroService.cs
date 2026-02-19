@@ -10,7 +10,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 namespace MelbergFramework.Infrastructure.Rabbit.Services;
 public class RabbitMicroService<TConsumer> : BackgroundService
@@ -23,9 +22,10 @@ public class RabbitMicroService<TConsumer> : BackgroundService
     private readonly IStandardConnectionFactory _connectionFactory;
     private readonly IMetricPublisher _metricPublisher;
     private readonly ILogger<RabbitMicroService<TConsumer>> _logger;
+
     public RabbitMicroService(
         string selector,
-        IServiceProvider serviceProvider,
+       IServiceProvider serviceProvider,
         IOptions<RabbitConfigurationOptions> configurationProvider,
         IStandardConnectionFactory connectionFactory,
         IMetricPublisher metricPublisher,
@@ -43,13 +43,13 @@ public class RabbitMicroService<TConsumer> : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var consumerConfig = RabbitConfigurator.GetConsumerOptions(_selector, _options);
-        var channel = _connectionFactory.GetConsumerModel(_selector);
+        var channel = await _connectionFactory.GetConsumerModel(_selector);
 
-        RabbitConfigurator.ConfigureRabbit(channel, _selector, _options);
+        await RabbitConfigurator.ConfigureRabbit(channel, _selector, _options);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
                 
-        consumer.Received += async (ch, ea) =>
+        consumer.ReceivedAsync += async (ch, ea) =>
         {
             var message = new Message()
             {
@@ -58,14 +58,14 @@ public class RabbitMicroService<TConsumer> : BackgroundService
                 Body = ea.Body.ToArray()
             };
 
-
             await ConsumeMessageAsync(message, stoppingToken);
 
-            channel.BasicAck(ea.DeliveryTag, false);
+            await channel.BasicAckAsync(ea.DeliveryTag, false);
         };
         for(int i = 0; i < consumerConfig.Scale; i++)
         {
-            channel.BasicConsume(consumerConfig.Queue, false, consumer);
+            var queueName = consumerConfig.Queue;
+            await channel.BasicConsumeAsync(consumerConfig.Queue, true, consumerConfig.Name, false, false,new Dictionary<string,object?>(), consumer);
         }
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }

@@ -12,7 +12,6 @@ public static class RabbitConfigurator
         
         if(!receiverConfigs.Any())
             throw new ConsumerConfigurationNotFoundException($"Consumer configuration for {selector} not found.");
-        var j = receiverConfigs.First();
 
         return receiverConfigs.First();
     }
@@ -27,41 +26,41 @@ public static class RabbitConfigurator
         return publisherConfigs.First();
     }
     
-    public static void ConfigureRabbit(this IModel channel, string selector, RabbitConfigurationOptions configurationOptions)
+    public static async Task ConfigureRabbit(this IChannel channel, string selector, RabbitConfigurationOptions configurationOptions)
     {
         var receiverConfigs = GetConsumerOptions(selector, configurationOptions);
         
-        ConfigureExchanges(channel,receiverConfigs.Connection,configurationOptions.ServerDeclarations.Exchanges);
-        ConfigureQueues(channel, receiverConfigs.Connection,configurationOptions.ServerDeclarations.Queues);
-        ConfigureBindings(channel, receiverConfigs.Connection, configurationOptions.ServerDeclarations.Bindings);
+        await ConfigureExchanges(channel,receiverConfigs.Connection,configurationOptions.ServerDeclarations.Exchanges);
+        await ConfigureQueues(channel, receiverConfigs.Connection,configurationOptions.ServerDeclarations.Queues);
+        await ConfigureBindings(channel, receiverConfigs.Connection, configurationOptions.ServerDeclarations.Bindings);
     }
-    static void ConfigureExchanges(this IModel Channel, string Connection, IEnumerable<ExchangeOptions> ExchangeInfo)
+    static async Task ConfigureExchanges(this IChannel Channel, string Connection, IEnumerable<ExchangeOptions> ExchangeInfo)
     {
         var relevantExchanges = ExchangeInfo.Where(_ => _.Connection == Connection).ToList();
 
         foreach(var exchange in relevantExchanges)
         {
-            Channel.ExchangeDeclare(exchange.Name,ToExchangeType(exchange.Type),exchange.Durable,exchange.AutoDelete);
+            await Channel.ExchangeDeclareAsync(exchange.Name,ToExchangeType(exchange.Type),exchange.Durable,exchange.AutoDelete);
         }
     }
 
-    static void ConfigureQueues(this IModel Channel, string Connection, IEnumerable<QueueOptions> QueueData)
+    static async Task ConfigureQueues(this IChannel Channel, string Connection, IEnumerable<QueueOptions> QueueData)
     {
         var relevantQueues = QueueData.Where(_ => _.Connection == Connection).ToList();
 
         foreach(var queue in relevantQueues)
         {
-            Channel.QueueDeclare(queue.Name,queue.Durable,queue.Exclusive,queue.AutoDelete);
+            await Channel.QueueDeclareAsync(queue.Name,queue.Durable,queue.Exclusive,queue.AutoDelete);
         }
     }
 
-    static void ConfigureBindings(this IModel Channel, string Connection, IEnumerable<BindingOptions> BindingData)
+    static async Task ConfigureBindings(this IChannel Channel, string Connection, IEnumerable<BindingOptions> BindingData)
     {
         var relevantBindings = BindingData.Where(_ => _.Connection == Connection).ToList();
 
         foreach(var binding in relevantBindings)
         {
-            Channel.QueueBind(binding.Queue,binding.Exchange,binding.SubscriptionKey);
+            await Channel.QueueBindAsync(binding.Queue,binding.Exchange,binding.SubscriptionKey);
         }
     }
     static string ToExchangeType(this string configType)

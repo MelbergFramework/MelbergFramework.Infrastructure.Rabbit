@@ -11,14 +11,16 @@ namespace MelbergFramework.Infrastructure.Rabbit.Publishers;
 public abstract class BasePublisher<TMessage>
     where TMessage :  IStandardMessage
 {
-    private IModel _channel;
-    protected IModel Channel 
+    private IChannel _channel;
+    protected IChannel Channel 
     {
         get
         {
             if(_channel == null)
             {
-                _channel = _connectionFactory.GetPublisherChannel(typeof(TMessage).Name).CreateModel();
+                var result = _connectionFactory.GetPublisherChannel(typeof(TMessage).Name).CreateChannelAsync();
+                result.Wait();
+                _channel = result.Result;
             }
             return _channel;
         }
@@ -36,9 +38,9 @@ public abstract class BasePublisher<TMessage>
     }
 
 
-    public void Emit(Message message)
+    public async ValueTask Emit(Message message)
     {
-        var properties = Channel.CreateBasicProperties();
+        var properties = new BasicProperties();
         
         properties.Headers = message.Headers;
         
@@ -50,7 +52,7 @@ public abstract class BasePublisher<TMessage>
                 Trace.CorrelationManager.ActivityId.ToString() : 
                 Guid.NewGuid().ToString();
 
-        Channel.BasicPublish(
+        await Channel.BasicPublishAsync(
             _config.Exchange,
             message.RoutingKey,
             true,
@@ -66,7 +68,7 @@ public abstract class BasePublisher<TMessage>
         }
         if (disposing && _channel != null)
         {
-            _channel.Close();
+            _channel.CloseAsync().Wait();
         }
 
         _disposed = true;
